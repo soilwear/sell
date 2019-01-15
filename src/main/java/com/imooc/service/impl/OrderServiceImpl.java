@@ -5,6 +5,8 @@ import com.imooc.dataobject.OrderMaster;
 import com.imooc.dataobject.ProductInfo;
 import com.imooc.dto.CartDTO;
 import com.imooc.dto.OrderDto;
+import com.imooc.enums.OrderStatusEnum;
+import com.imooc.enums.PayStatusEnum;
 import com.imooc.enums.ResultEnum;
 import com.imooc.exception.SellException;
 import com.imooc.repository.OrderDetailRepository;
@@ -65,7 +67,7 @@ public class OrderServiceImpl implements OrderService {
             }
 
             //2 .计算订单总价
-            orderAmount = orderDetail.getProductPrice().multiply
+            orderAmount = productInfo.getProductPrice().multiply
                     (new BigDecimal(orderDetail.getProductQuantity())
                             .add(orderAmount));
             //订单详情入库
@@ -86,18 +88,22 @@ public class OrderServiceImpl implements OrderService {
 
 
         OrderMaster orderMaster = new OrderMaster();
+        BeanUtils.copyProperties(orderDto, orderMaster);
         orderMaster.setOrderId(orderId);
         orderMaster.setOrderAmount(orderAmount);
-        BeanUtils.copyProperties(orderDto, orderMaster);
 
+        orderMaster.setOrderStatus(OrderStatusEnum.NEW.getCode());
+        orderMaster.setPayStatus(PayStatusEnum.WAIT.getCode());
         orderMasterRepository.save(orderMaster);
 
 
         //4 .扣库存
 
-        List<CartDTO> cartDTOList = new ArrayList<>();
+        /**
+         * 采用redis的锁机制解决库存的多线程问题
+         */
 
-        orderDto.getOrderDetailList().stream().map(e ->
+        List<CartDTO> cartDTOList = orderDto.getOrderDetailList().stream().map(e ->
                 new CartDTO(e.getProductId(), e.getProductQuantity())
         ).collect(Collectors.toList());
         productService.decreaseStock(cartDTOList);
