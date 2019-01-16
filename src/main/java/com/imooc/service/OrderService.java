@@ -1,7 +1,6 @@
 package com.imooc.service;
 
 import com.imooc.dto.OrderDto;
-import org.hibernate.criterion.Order;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -19,7 +18,7 @@ public interface OrderService {
     OrderDto create(OrderDto orderDto);
 
     //查询单个订单
-    Order findTime(String orderId);
+    OrderDto findOne(String orderId);
 
     //查询订单列表
     Page<OrderDto> findList(String buyerOpenId, Pageable pageable);

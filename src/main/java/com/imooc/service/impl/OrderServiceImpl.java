@@ -1,5 +1,6 @@
 package com.imooc.service.impl;
 
+import com.imooc.converter.OrderMaster2OrderDTOConverter;
 import com.imooc.dataobject.OrderDetail;
 import com.imooc.dataobject.OrderMaster;
 import com.imooc.dataobject.ProductInfo;
@@ -14,17 +15,18 @@ import com.imooc.repository.OrderMasterRepository;
 import com.imooc.service.OrderService;
 import com.imooc.service.ProductService;
 import com.imooc.utils.KeyUtil;
-import org.hibernate.criterion.Order;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
 
 import javax.transaction.Transactional;
 import java.math.BigDecimal;
 import java.math.BigInteger;
-import java.util.ArrayList;
+
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -54,71 +56,87 @@ public class OrderServiceImpl implements OrderService {
     public OrderDto create(OrderDto orderDto) {
 
         String orderId = KeyUtil.genUniqueKey();
-
         BigDecimal orderAmount = new BigDecimal(BigInteger.ZERO);
 
+//        List<CartDTO> cartDTOList = new ArrayList<>();
 
-        //List<CartDTO>  cartDTOList=new ArrayList<>();
-        //1 。查询商品，（数量，价格）
+        //1. 查询商品（数量, 价格）
         for (OrderDetail orderDetail : orderDto.getOrderDetailList()) {
             ProductInfo productInfo = productService.findOne(orderDetail.getProductId());
             if (productInfo == null) {
                 throw new SellException(ResultEnum.PRODUCT_NOT_EXIST);
             }
 
-            //2 .计算订单总价
-            orderAmount = productInfo.getProductPrice().multiply
-                    (new BigDecimal(orderDetail.getProductQuantity())
-                            .add(orderAmount));
+            //2. 计算订单总价
+            orderAmount = productInfo.getProductPrice()
+                    .multiply(new BigDecimal(orderDetail.getProductQuantity()))
+                    .add(orderAmount);
+
             //订单详情入库
             orderDetail.setDetailId(KeyUtil.genUniqueKey());
-            orderDetail.setOrderId(KeyUtil.genUniqueKey());
-
+            orderDetail.setOrderId(orderId);
             BeanUtils.copyProperties(productInfo, orderDetail);
-
             orderDetailRepository.save(orderDetail);
 
-
-//            CartDTO cartDTO=new CartDTO(orderDetail.getProductId(),orderDetail.getProductQuantity());
+//            CartDTO cartDTO = new CartDTO(orderDetail.getProductId(), orderDetail.getProductQuantity());
 //            cartDTOList.add(cartDTO);
         }
 
 
-        //3 .写入订单·数据库,(orderMaster和orderDetail)
-
-
+        //3. 写入订单数据库（orderMaster和orderDetail）
         OrderMaster orderMaster = new OrderMaster();
+        orderDto.setOrderId(orderId);
         BeanUtils.copyProperties(orderDto, orderMaster);
-        orderMaster.setOrderId(orderId);
         orderMaster.setOrderAmount(orderAmount);
-
         orderMaster.setOrderStatus(OrderStatusEnum.NEW.getCode());
         orderMaster.setPayStatus(PayStatusEnum.WAIT.getCode());
         orderMasterRepository.save(orderMaster);
 
-
-        //4 .扣库存
-
-        /**
-         * 采用redis的锁机制解决库存的多线程问题
-         */
-
+        //4. 扣库存
         List<CartDTO> cartDTOList = orderDto.getOrderDetailList().stream().map(e ->
                 new CartDTO(e.getProductId(), e.getProductQuantity())
         ).collect(Collectors.toList());
         productService.decreaseStock(cartDTOList);
 
+
         return orderDto;
     }
 
     @Override
-    public Order findTime(String orderId) {
-        return null;
+    public OrderDto findOne(String orderId) {
+
+        OrderMaster orderMaster = orderMasterRepository.findById(orderId).orElse(null);
+
+        if (orderMaster == null) {
+            throw new SellException(ResultEnum.ORDER_NOT_EXIST);
+        }
+
+        List<OrderDetail> orderDetailList = orderDetailRepository.findByOrderId(orderId);
+        if (CollectionUtils.isEmpty(orderDetailList)) {
+            throw new SellException(ResultEnum.ORDERDETAIL_NOT_EXIST);
+        }
+
+        OrderDto orderDTO = new OrderDto();
+        BeanUtils.copyProperties(orderMaster, orderDTO);
+        orderDTO.setOrderDetailList(orderDetailList);
+
+        return orderDTO;
     }
 
     @Override
     public Page<OrderDto> findList(String buyerOpenId, Pageable pageable) {
-        return null;
+
+        Page<OrderMaster> orderMasterPage = orderMasterRepository.findByBuyerOpenid(buyerOpenId, pageable);
+
+
+        List<OrderDto> orderDtoList = OrderMaster2OrderDTOConverter.convert(orderMasterPage.getContent());
+
+
+         return new PageImpl<OrderDto>(orderDtoList,pageable,orderMasterPage.getTotalElements());
+
+
+
+
     }
 
     @Override
@@ -136,3 +154,6 @@ public class OrderServiceImpl implements OrderService {
         return null;
     }
 }
+
+
+//https://mobaxterm.mobatek.net
