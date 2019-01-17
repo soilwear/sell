@@ -184,21 +184,65 @@ public class OrderServiceImpl implements OrderService {
     }
 
 
-
     //完结订单
     @Override
     public OrderDto finish(OrderDto orderDto) {
 
 
+        //判断订单状态
 
 
+        if (orderDto.getPayStatus().equals(OrderStatusEnum.NEW.getCode())) {
+            log.error("【完结订单】  订单状态不正确  ，orderId={} ，orderStatus={}", orderDto.getOrderId());
 
-        return null;
+        }
+
+
+        //修改订单状态
+        orderDto.setOrderStatus(OrderStatusEnum.FINISHED.getCode());
+        OrderMaster orderMaster = new OrderMaster();
+        BeanUtils.copyProperties(orderDto, orderMaster);
+        OrderMaster updateResult = orderMasterRepository.save(orderMaster);
+
+
+        if (updateResult == null) {
+
+
+            log.error("【完结订单】   更新失败  ，orderMaster={}", orderMaster);
+            throw new SellException(ResultEnum.ORDER_UPDATE_DAIL);
+
+        }
+        return orderDto;
     }
 
     @Override
+    @Transactional
     public OrderDto paid(OrderDto orderDto) {
-        return null;
+
+
+        //判断订单状态
+        if (!orderDto.getOrderStatus().equals(OrderStatusEnum.NEW.getCode())) {
+            log.error("【订单支付完成】订单状态不正确, orderId={}, orderStatus={}", orderDto.getOrderId(), orderDto.getOrderStatus());
+            throw new SellException(ResultEnum.ORDER_STATUS_ERROR);
+        }
+
+        //判断支付状态
+        if (!orderDto.getPayStatus().equals(PayStatusEnum.WAIT.getCode())) {
+            log.error("【订单支付完成】订单支付状态不正确, orderDTO={}", orderDto);
+            throw new SellException(ResultEnum.ORDER_PAY_STATUS_ERROR);
+        }
+
+        //修改支付状态
+        orderDto.setPayStatus(PayStatusEnum.SUCCESS.getCode());
+        OrderMaster orderMaster = new OrderMaster();
+        BeanUtils.copyProperties(orderDto, orderMaster);
+        OrderMaster updateResult = orderMasterRepository.save(orderMaster);
+        if (updateResult == null) {
+            log.error("【订单支付完成】更新失败, orderMaster={}", orderMaster);
+            throw new SellException(ResultEnum.ORDER_UPDATE_DAIL);
+        }
+
+        return orderDto;
     }
 }
 
